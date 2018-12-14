@@ -86,7 +86,8 @@ class VGG16(nn.Module):
         x_output_onehot1 = torch.zeros((len(x_output1), num_class)).to(device)
         x_output_onehot1.scatter_(1, x_output1.unsqueeze(1), 1)
 
-        loss1 = x_output_onehot1 * torch.log(x_pred1 + 1e-20)
+        # loss1 = x_output_onehot1 * torch.log(x_pred1 + 1e-20) # normal cross entropy
+        loss1 = x_output_onehot1 * (1 - x_pred1) ** 2 * torch.log(x_pred1 + 1e-20)
         return torch.sum(-loss1, dim=1)
 
 
@@ -155,7 +156,6 @@ for epoch in range(total_epoch):
         train_loss = torch.mean(train_loss1) + torch.mean(train_loss2)
 
         train_loss.backward()
-        #torch.nn.utils.clip_grad_norm_(VGG16.parameters(), 1)
         optimizer.step()
 
         train_predict_label1 = train_pred1.data.max(1)[1]
