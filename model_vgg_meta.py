@@ -30,8 +30,6 @@ class LabelGenerator(nn.Module):
             nn.Linear(filter[-1], int(np.sum(self.class_nb))),
         )
 
-        self.lr = nn.Parameter(torch.FloatTensor([-0.5]))
-
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_normal_(m.weight)
@@ -88,7 +86,7 @@ class LabelGenerator(nn.Module):
 
         predict = self.classifier(g_block5.view(g_block5.size(0), -1))
         label_pred = self.mask_softmax(predict, mask, dim=1)
-        return label_pred, self.lr
+        return label_pred
 
 
 class VGG16(nn.Module):
@@ -221,7 +219,8 @@ class VGG16(nn.Module):
         else:
             x_output_onehot = torch.zeros((len(x_output), num_output)).to(device)
             x_output_onehot.scatter_(1, x_output.unsqueeze(1), 1)
-        loss = x_output_onehot * torch.log(x_pred + 1e-24)
+        # loss = x_output_onehot * torch.log(x_pred + 1e-24) # normal cross_entropy
+        loss = x_output_onehot * (1 - x_pred)**2 * torch.log(x_pred + 1e-24)
         return torch.sum(-loss, dim=1)
 
     def model_entropy(self, x_pred1):
@@ -301,7 +300,7 @@ for epoch in range(total_epoch):
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
         train_pred1, train_pred2 = VGG16_model(train_data)
-        train_pred3, _ = LabelGenerator(train_data, train_label[:, 2])
+        train_pred3 = LabelGenerator(train_data, train_label[:, 2])
         # train_label[:, i], i= 0,1,2,3 represents 3, 10, 20, 100-class
 
         optimizer.zero_grad()
@@ -327,14 +326,14 @@ for epoch in range(total_epoch):
         cost[3] = train_acc2
         avg_cost[index][0:4] += cost / train_batch
 
-    # evaluating test data
+    # evaluating meta data
     cifar100_val_dataset = iter(cifar100_val_loader)
     for i in range(val_batch):
         test_data, test_label, _ = cifar100_val_dataset.next()
         test_label = test_label.type(torch.LongTensor)
         test_data, test_label = test_data.to(device), test_label.to(device)
         test_pred1, test_pred2 = VGG16_model(test_data)
-        test_pred3, lr = LabelGenerator(test_data, test_label[:, 2])
+        test_pred3 = LabelGenerator(test_data, test_label[:, 2])
 
         test_loss1 = VGG16_model.model_fit(test_pred1, test_label[:, 2], pri=True, num_output=20)
         test_loss2 = VGG16_model.model_fit(test_pred2, test_pred3, pri=False, num_output=100)
