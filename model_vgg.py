@@ -79,7 +79,8 @@ class VGG16(nn.Module):
     def model_fit(self, x_pred, x_output, num_output):
         x_output_onehot = torch.zeros((len(x_output), num_output)).to(device)
         x_output_onehot.scatter_(1, x_output.unsqueeze(1), 1)
-        loss = x_output_onehot * torch.log(x_pred + 1e-20)
+        # loss = x_output_onehot * torch.log(x_pred + 1e-20) # normal cross entropy
+        loss = x_output_onehot * (1 - x_pred) ** 2 * torch.log(x_pred + 1e-20)
         return torch.sum(-loss, dim=1)
 
 
