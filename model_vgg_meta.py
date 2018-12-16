@@ -309,7 +309,14 @@ for epoch in range(total_epoch):
         train_loss1 = VGG16_model.model_fit(train_pred1, train_label[:, 2], pri=True, num_output=20)
         train_loss2 = VGG16_model.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
         train_loss3 = VGG16_model.model_entropy(train_pred3)
-
+        
+        ## Gradient similiarity 
+        cos_mean = 0
+        for k in range(len(grads1) - 8): 
+            # -8 means ignore the fc layers, so only calculate the cos_sim on the shared representations (conv layers)
+            cos_mean += torch.mean(F.cosine_similarity(grads1[k], grads2[k], dim=0)) / (len(grads1) - 8)
+        ## 
+        
         train_loss = torch.mean(train_loss1) + torch.mean(train_loss2)
         train_loss.backward()
 
@@ -323,7 +330,7 @@ for epoch in range(total_epoch):
         cost[0] = torch.mean(train_loss1).item()
         cost[1] = train_acc1
         cost[2] = torch.mean(train_loss2).item()
-        cost[3] = train_acc2
+        cost[3] = cos_mean # put it here to visualise the number
         avg_cost[index][0:4] += cost / train_batch
 
     # evaluating meta data
