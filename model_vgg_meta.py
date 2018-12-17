@@ -243,8 +243,10 @@ trans_test = transforms.Compose([
 
 ])
 
-cifar100_train_set = CIFAR100(data_path='dataset', train=True, transform=trans_train, auxiliary=None)
-cifar100_test_set = CIFAR100(data_path='dataset', train=False, transform=trans_test)
+data_path = '/Users/FabianFalck/Documents/[03]SelfAuxLearning/Data'
+
+cifar100_train_set = CIFAR100(data_path=data_path, train=True, transform=trans_train, auxiliary=None)
+cifar100_test_set = CIFAR100(data_path=data_path, train=False, transform=trans_test)
 
 batch_size = 100
 kwargs = {'num_workers': 1, 'pin_memory': True}
@@ -295,6 +297,8 @@ for epoch in range(total_epoch):
     # iteration for all batches
     cifar100_train_dataset = iter(cifar100_train_loader)
     for i in range(train_batch):
+        print("batch %d"%i)
+
         # evaluating training datata
         train_data, train_label, _ = cifar100_train_dataset.next()
         train_label = train_label.type(torch.LongTensor)
