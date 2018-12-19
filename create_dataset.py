@@ -105,6 +105,7 @@ class CIFAR100(Dataset):
         else:
             return img_as_img, np.array([label[self.aux_index], self.data_aux[index]]), index
 
+
     def __len__(self):
         return self.data_len
 

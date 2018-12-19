@@ -12,7 +12,11 @@ import matplotlib.pyplot as plt
 from sklearn import manifold
 
 
+
 class LabelGenerator(nn.Module):
+    """
+    Meta-generator class.
+    """
     def __init__(self, class_nb):
         super(LabelGenerator, self).__init__()
         filter = [64, 128, 256, 512, 512]
@@ -86,10 +90,14 @@ class LabelGenerator(nn.Module):
 
         predict = self.classifier(g_block5.view(g_block5.size(0), -1))
         label_pred = self.mask_softmax(predict, mask, dim=1)
+
         return label_pred
 
 
 class VGG16(nn.Module):
+    """
+    Multi-task evaluator class.
+    """
     def __init__(self, class_nb):
         super(VGG16, self).__init__()
         filter = [64, 128, 256, 512, 512]
@@ -108,6 +116,7 @@ class VGG16(nn.Module):
         )
 
         self.classifier2 = nn.Sequential(
+            # TODO weird -> remove these layers
             nn.Linear(filter[-1], filter[-1]),
             nn.ReLU(inplace=True),
             nn.Linear(filter[-1], int(np.sum(class_nb))),
@@ -151,29 +160,27 @@ class VGG16(nn.Module):
             )
         return conv_block
 
+
+    # TODO why is this necessary?
     def conv_layer_ff(self, input, weights, index):
         if index < 3:
             net = F.conv2d(input, weights['block{:d}.0.weight'.format(index)], weights['block{:d}.0.bias'.format(index)], padding=1)
             net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)],
-                               training=True)
+                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)], training=True)
             net = F.relu(net, inplace=True)
             net = F.conv2d(net, weights['block{:d}.3.weight'.format(index)], weights['block{:d}.3.bias'.format(index)], padding=1)
             net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)],
-                               training=True)
+                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)], training=True)
             net = F.relu(net, inplace=True)
             net = F.max_pool2d(net, kernel_size=2, stride=2, )
         else:
             net = F.conv2d(input, weights['block{:d}.0.weight'.format(index)], weights['block{:d}.0.bias'.format(index)], padding=1)
             net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)],
-                               training=True)
+                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)], training=True)
             net = F.relu(net, inplace=True)
             net = F.conv2d(net, weights['block{:d}.3.weight'.format(index)], weights['block{:d}.3.bias'.format(index)], padding=1)
             net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)],
-                               training=True)
+                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)], training=True)
             net = F.relu(net, inplace=True)
             net = F.conv2d(net, weights['block{:d}.6.weight'.format(index)], weights['block{:d}.6.bias'.format(index)], padding=1)
             net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
@@ -181,14 +188,18 @@ class VGG16(nn.Module):
                                training=True)
             net = F.relu(net, inplace=True)
             net = F.max_pool2d(net, kernel_size=2, stride=2)
+
         return net
 
+
+    # why is this necessary
     def dense_layer_ff(self, input, weights, index):
         net = F.linear(input, weights['classifier{:d}.0.weight'.format(index)], weights['classifier{:d}.0.bias'.format(index)])
         net = F.relu(net, inplace=True)
         net = F.linear(net, weights['classifier{:d}.2.weight'.format(index)], weights['classifier{:d}.2.bias'.format(index)])
         net = F.softmax(net, dim=1)
         return net
+
 
     def forward(self, x, weights=None):
         if weights is None:
@@ -213,6 +224,7 @@ class VGG16(nn.Module):
 
         return t1_pred, t2_pred
 
+
     def model_fit(self, x_pred, x_output, pri=True, num_output=3):
         if not pri:
             x_output_onehot = x_output
@@ -223,10 +235,12 @@ class VGG16(nn.Module):
         loss = x_output_onehot * (1 - x_pred)**2 * torch.log(x_pred + 1e-24)
         return torch.sum(-loss, dim=1)
 
+
     def model_entropy(self, x_pred1):
         x_pred1 = torch.mean(x_pred1, dim=0)
         loss1 = x_pred1 * torch.log(x_pred1 + 1e-24)
-        return torch.sum(loss1)
+        loss1 = torch.sum(loss1)
+        return loss1
 
 
 # load CIFAR100 dataset
@@ -349,12 +363,16 @@ for epoch in range(total_epoch):
         cost[0] = torch.mean(test_loss1).item()
         cost[1] = test_acc1
 
+        # ----  # FROM MAMAL 2ND ORDER DERIVATIVE TRICK
+
         fast_weights = OrderedDict((name, param) for (name, param) in VGG16_model.named_parameters())
 
         grads = torch.autograd.grad(test_loss, VGG16_model.parameters(), retain_graph=True)
         data = [p.data for p in list(VGG16_model.parameters())]
 
         fast_weights = OrderedDict((name, param - vgg_lr * grad) for ((name, param), grad, data) in zip(fast_weights.items(), grads, data))
+
+        # ----
 
         test_pred1, test_pred2 = VGG16_model.forward(test_data, fast_weights)
         test_loss1 = VGG16_model.model_fit(test_pred1, test_label[:, 2], pri=True, num_output=20)
