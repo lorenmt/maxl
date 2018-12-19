@@ -192,7 +192,7 @@ class VGG16(nn.Module):
         return net
 
 
-    # why is this necessary
+    # TODO why is this necessary?
     def dense_layer_ff(self, input, weights, index):
         net = F.linear(input, weights['classifier{:d}.0.weight'.format(index)], weights['classifier{:d}.0.bias'.format(index)])
         net = F.relu(net, inplace=True)

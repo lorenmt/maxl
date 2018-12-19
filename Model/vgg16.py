@@ -108,21 +108,23 @@ class VGG16(nn.Module):
         return t1_pred
 
 
-    def compute_focal_loss(self, x_pred, x_output, num_output):
+    def compute_focal_loss(self, pred, label):
         """
         Compute focal loss.
-        :param x_pred:
-        :param x_output:
-        :param num_output:
-        :return:
+        :param pred: one-hot prediction vector
+        :param label: class index label vector (NOT one hot!)
+        :return: scalar (as Tensor) of averaged loss over minibatch
         """
-        x_output_onehot = torch.zeros((len(x_output), num_output)).to(self.device)
-        x_output_onehot.scatter_(1, x_output.unsqueeze(1), 1).to(self.device)
+        print("in focal loss: ", label)
+        # make label onehot TODO BAD STYLE -> is not actually part of the loss computation, but left for now, because auxiliary complicated
+        label_onehot = torch.zeros(pred.size()).to(self.device)
+        label_onehot.scatter_(1, label.unsqueeze(1), 1).to(self.device)
 
         # normal cross entropy
         # loss = x_output_onehot * torch.log(x_pred + 1e-20)
         # focal loss
-        loss = - (x_output_onehot * ((1 - x_pred)**2) * torch.log(x_pred + 1e-20)).to(self.device)  # size: (config['batch_size'], principal_classes), e.g. (100, 20)
-        print("loss: ", loss, loss.size())
+        loss = - (label_onehot * ((1 - pred) ** 2) * torch.log(pred + 1e-20)).to(self.device)  # size: (config['batch_size'], principal_classes), e.g. (100, 20)
+        loss = torch.sum(loss, dim=1)  # sum over the classes dimension -> per instance loss
+        loss = torch.mean(loss)  # average loss over the batch
 
-        return torch.sum(loss, dim=1)  # TODO why summing here?
+        return loss

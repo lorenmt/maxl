@@ -95,8 +95,7 @@ if __name__ == '__main__':
             train_data, train_label = train_data.to(device), train_label.to(device)  # TODO why not done in loader itself?
             train_pred1 = VGG16(train_data)  # dynamic graph -> reinitializes the object; returns output of forward function -> softmax
             optimizer.zero_grad()  # empty gradients (make them zero)
-            train_loss1 = VGG16.compute_focal_loss(train_pred1, train_label[:, 2], 20)  # TODO why 20?, why 2? -> BAD!
-            train_loss = torch.mean(train_loss1)
+            train_loss = VGG16.compute_focal_loss(train_pred1, train_label[:, 2])  # TODO why 20?, why 2? -> BAD!
 
             train_loss.backward()  # backpropagate error
             optimizer.step()  # gradient step
@@ -104,7 +103,7 @@ if __name__ == '__main__':
             train_predict_label1 = train_pred1.data.max(1)[1].to(device)  # get indices of predicted class (the index with the highest softmax score)
 
             train_acc1 = train_predict_label1.eq(train_label[:, 2]).sum().item() / batch_size  # .item() is equivalent to .asscalar() in numpy
-            cost[0] = torch.mean(train_loss1).item()
+            cost[0] = train_loss.item()
             cost[1] = train_acc1
 
             k = k + 1
@@ -118,12 +117,12 @@ if __name__ == '__main__':
                 test_label = test_label.type(torch.LongTensor)  # do torch operation
                 test_data, test_label = test_data.to(device), test_label.to(device)  # do torch operation
                 test_pred1 = VGG16(test_data)
-                test_loss1 = VGG16.compute_focal_loss(test_pred1, test_label[:, 2], 20)  # TOOD weird
+                test_loss1 = VGG16.compute_focal_loss(test_pred1, test_label[:, 2])  # TODO weird!! label...
 
                 test_predict_label1 = test_pred1.data.max(1)[1]
 
                 test_acc1 = test_predict_label1.eq(test_label[:, 2]).sum().item() / batch_size
-                cost[0] = torch.mean(test_loss1).item()
+                cost[0] = test_loss1.item()
                 cost[1] = test_acc1
 
                 avg_cost[epoch][4:] += cost / n_test_batches
