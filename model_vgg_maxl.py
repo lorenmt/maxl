@@ -8,8 +8,6 @@ import torchvision.transforms as transforms
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.utils.data.sampler as sampler
-import matplotlib.pyplot as plt
-from sklearn import manifold
 
 
 class LabelGenerator(nn.Module):
@@ -94,12 +92,14 @@ class VGG16(nn.Module):
         super(VGG16, self).__init__()
         filter = [64, 128, 256, 512, 512]
 
+        # shared representation theta_1 with 5 convolutional blocks
         self.block1 = self.conv_layer(3, filter[0], 1)
         self.block2 = self.conv_layer(filter[0], filter[1], 2)
         self.block3 = self.conv_layer(filter[1], filter[2], 3)
         self.block4 = self.conv_layer(filter[2], filter[3], 4)
         self.block5 = self.conv_layer(filter[3], filter[4], 5)
 
+        # primary task prediction
         self.classifier1 = nn.Sequential(
             nn.Linear(filter[-1], filter[-1]),
             nn.ReLU(inplace=True),
@@ -107,6 +107,7 @@ class VGG16(nn.Module):
             nn.Softmax(dim=1)
         )
 
+        # auxilairy task prediction
         self.classifier2 = nn.Sequential(
             nn.Linear(filter[-1], filter[-1]),
             nn.ReLU(inplace=True),
@@ -243,7 +244,7 @@ trans_test = transforms.Compose([
 
 ])
 
-cifar100_train_set = CIFAR100(data_path='dataset', train=True, transform=trans_train, auxiliary=None)
+cifar100_train_set = CIFAR100(data_path='dataset', train=True, transform=trans_train)
 cifar100_test_set = CIFAR100(data_path='dataset', train=False, transform=trans_test)
 
 batch_size = 100
@@ -251,14 +252,7 @@ kwargs = {'num_workers': 1, 'pin_memory': True}
 cifar100_train_loader = torch.utils.data.DataLoader(
     dataset=cifar100_train_set,
     batch_size=batch_size,
-    sampler=sampler.RandomSampler(np.arange(0, 50000)))
-    #shuffle=True)
-
-cifar100_val_loader = torch.utils.data.DataLoader(
-    dataset=cifar100_train_set,
-    batch_size=batch_size,
-    sampler=sampler.RandomSampler(np.arange(0, 50000)))
-    #shuffle=True)
+    shuffle=True)
 
 cifar100_test_loader = torch.utils.data.DataLoader(
     dataset=cifar100_test_set,
@@ -267,7 +261,6 @@ cifar100_test_loader = torch.utils.data.DataLoader(
 
 # define model
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 LabelGenerator = LabelGenerator(class_nb=[5]*20).to(device)
 gen_optimizer = optim.SGD(LabelGenerator.parameters(), lr=1e-3, weight_decay=5e-4)
 gen_scheduler = optim.lr_scheduler.StepLR(gen_optimizer, step_size=50, gamma=0.5)
@@ -275,7 +268,6 @@ gen_scheduler = optim.lr_scheduler.StepLR(gen_optimizer, step_size=50, gamma=0.5
 # define parameters
 total_epoch = 200
 train_batch = len(cifar100_train_loader)
-val_batch = len(cifar100_val_loader)
 test_batch = len(cifar100_test_loader)
 
 VGG16_model = VGG16(class_nb=[5]*20).to(device)
@@ -309,14 +301,14 @@ for epoch in range(total_epoch):
         train_loss1 = VGG16_model.model_fit(train_pred1, train_label[:, 2], pri=True, num_output=20)
         train_loss2 = VGG16_model.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
         train_loss3 = VGG16_model.model_entropy(train_pred3)
-        
-        ## Gradient similiarity 
+
+        ## Gradient similiarity
         cos_mean = 0
-        for k in range(len(grads1) - 8): 
+        for k in range(len(grads1) - 8):
             # -8 means ignore the fc layers, so only calculate the cos_sim on the shared representations (conv layers)
             cos_mean += torch.mean(F.cosine_similarity(grads1[k], grads2[k], dim=0)) / (len(grads1) - 8)
-        ## 
-        
+        ##
+
         train_loss = torch.mean(train_loss1) + torch.mean(train_loss2)
         train_loss.backward()
 
@@ -334,7 +326,7 @@ for epoch in range(total_epoch):
         avg_cost[index][0:4] += cost / train_batch
 
     # evaluating meta data
-    cifar100_val_dataset = iter(cifar100_val_loader)
+    cifar100_train_dataset = iter(cifar100_train_loader)
     for i in range(val_batch):
         test_data, test_label, _ = cifar100_val_dataset.next()
         test_label = test_label.type(torch.LongTensor)

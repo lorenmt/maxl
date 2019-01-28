@@ -15,18 +15,21 @@ class VGG16(nn.Module):
         super(VGG16, self).__init__()
         filter = [64, 128, 256, 512, 512]
 
+        # define convolution block in VGG-16
         self.block1 = self.conv_layer(3, filter[0], 1)
         self.block2 = self.conv_layer(filter[0], filter[1], 2)
         self.block3 = self.conv_layer(filter[1], filter[2], 3)
         self.block4 = self.conv_layer(filter[2], filter[3], 4)
         self.block5 = self.conv_layer(filter[3], filter[4], 5)
 
+        # define fc-layers in VGG-16
         self.classifier = nn.Sequential(
             nn.Linear(filter[-1], filter[-1]),
             nn.ReLU(inplace=True),
             nn.Linear(filter[-1], 20),
         )
 
+        # apply weight initialisation
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
@@ -77,14 +80,16 @@ class VGG16(nn.Module):
         return t1_pred
 
     def model_fit(self, x_pred, x_output, num_output):
+        # convert a single label into a one-hot vector
         x_output_onehot = torch.zeros((len(x_output), num_output)).to(device)
         x_output_onehot.scatter_(1, x_output.unsqueeze(1), 1)
-        # loss = x_output_onehot * torch.log(x_pred + 1e-20) # normal cross entropy
+
+        # apply focal loss
         loss = x_output_onehot * (1 - x_pred) ** 2 * torch.log(x_pred + 1e-20)
         return torch.sum(-loss, dim=1)
 
 
-# load CIFAR100 dataset
+# define image transformation
 trans_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
@@ -98,26 +103,16 @@ trans_test = transforms.Compose([
 
 ])
 
-
+# load CIFAR-100 dataset with batch-size 100
 cifar100_train_set = CIFAR100(data_path='dataset', train=True, transform=trans_train)
 cifar100_test_set = CIFAR100(data_path='dataset', train=False, transform=trans_test)
-
-class ConcatDataset(torch.utils.data.Dataset):
-    def __init__(self, *datasets):
-        self.datasets = datasets
-
-    def __getitem__(self, i):
-        return tuple(d[i] for d in self.datasets)
-
-    def __len__(self):
-        return min(len(d) for d in self.datasets)
 
 batch_size = 100
 kwargs = {'num_workers': 1, 'pin_memory': True}
 cifar100_train_loader = torch.utils.data.DataLoader(
     dataset=cifar100_train_set,
     batch_size=batch_size,
-    sampler=sampler.RandomSampler(np.arange(0, 50000)))
+    shuffle=True)
 
 cifar100_test_loader = torch.utils.data.DataLoader(
     dataset=cifar100_test_set,
@@ -125,28 +120,26 @@ cifar100_test_loader = torch.utils.data.DataLoader(
     shuffle=True)
 
 
-# define model
+# define VGG-16 model
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 VGG16 = VGG16().to(device)
 optimizer = optim.SGD(VGG16.parameters(), lr=0.01)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
-# define parameters
+# define parameters and running for 200 epochs
 total_epoch = 200
 train_batch = len(cifar100_train_loader)
 test_batch = len(cifar100_test_loader)
 k = 0
 avg_cost = np.zeros([total_epoch, 8], dtype=np.float32)
-for epoch in range(total_epoch):
-    index = epoch
+for index in range(total_epoch):
     cost = np.zeros(4, dtype=np.float32)
     scheduler.step()
 
-    # iteration for all batches
+    # training step
     cifar100_train_dataset = iter(cifar100_train_loader)
     for i in range(train_batch):
-        # evaluating training datata
-        train_data, train_label, _ = cifar100_train_dataset.next()
+        train_data, train_label = cifar100_train_dataset.next()
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
         train_pred1 = VGG16(train_data)
@@ -170,7 +163,7 @@ for epoch in range(total_epoch):
     with torch.no_grad():
         cifar100_test_dataset = iter(cifar100_test_loader)
         for i in range(test_batch):
-            test_data, test_label, _ = cifar100_test_dataset.next()
+            test_data, test_label = cifar100_test_dataset.next()
             test_label = test_label.type(torch.LongTensor)
             test_data, test_label = test_data.to(device), test_label.to(device)
             test_pred1 = VGG16(test_data)
@@ -188,6 +181,3 @@ for epoch in range(total_epoch):
           'CIFAR100-TEST: {:.4f} {:.4f} '
           .format(epoch, k, avg_cost[index][0], avg_cost[index][1],
                   avg_cost[index][4], avg_cost[index][5]))
-
-#torch.save(VGG16.state_dict(), 'model_weights/cifar10_human_old')
-#np.save('loss/cifar10_human_old.npy', avg_cost)
