@@ -13,8 +13,8 @@ class LabelGenerator(nn.Module):
     def __init__(self, psi):
         super(LabelGenerator, self).__init__()
         """
-            label-generation network: 
-            takes the input and generates auxiliary labels with masked softmax for an auxiliary task. 
+            label-generation network:
+            takes the input and generates auxiliary labels with masked softmax for an auxiliary task.
         """
         filter = [64, 128, 256, 512, 512]
         self.class_nb = psi
@@ -26,7 +26,7 @@ class LabelGenerator(nn.Module):
         self.block4 = self.conv_layer(filter[2], filter[3], 4)
         self.block5 = self.conv_layer(filter[3], filter[4], 5)
 
-        # define fc-layers in VGG-16 (output number auxiliary class \sum_i\psi[i])
+        # define fc-layers in VGG-16 (output auxiliary classes \sum_i\psi[i])
         self.classifier = nn.Sequential(
             nn.Linear(filter[-1], filter[-1]),
             nn.ReLU(inplace=True),
@@ -99,7 +99,7 @@ class VGG16(nn.Module):
     def __init__(self, psi):
         super(VGG16, self).__init__()
         """
-            multi-task network: 
+            multi-task network:
             takes the input and predicts primary and auxiliary labels (same network structure as in human)
         """
         filter = [64, 128, 256, 512, 512]
@@ -208,7 +208,7 @@ class VGG16(nn.Module):
 
     def forward(self, x, weights=None):
         """
-            if no weights given, use the direct training strategy and update network step
+            if no weights given, use the direct training strategy and update network paramters
             else retain the computational graph which will be used in second-derivative step
         """
         if weights is None:
@@ -235,7 +235,7 @@ class VGG16(nn.Module):
 
     def model_fit(self, x_pred, x_output, pri=True, num_output=3):
         if not pri:
-            # generated aux label is a soft-assignmentn vector
+            # generated auxiliary label is a soft-assignment vector
             # no need to change to one-hot vector
             x_output_onehot = x_output
         else:
