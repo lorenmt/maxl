@@ -1,42 +1,69 @@
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from PIL import Image
+from torchvision.datasets.utils import download_url, check_integrity
 
 import os
-import glob
 import pickle
 import numpy as np
-import scipy.misc
-import warnings
-import torch
+
 
 class CIFAR100(Dataset):
-    def __init__(self, data_path, train=True, transform=None, auxiliary=None, file_index=1):
+    """
+    This file is directly modified from https://pytorch.org/docs/stable/torchvision/datasets.html
+    """
+    base_folder = 'cifar-100-python'
+    url = "https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz"
+    filename = "cifar-100-python.tar.gz"
+    tgz_md5 = 'eb9058c3a382ffc7106e4002c42a8d85'
+    train_list = [
+        ['train', '16019d7e3df5f24257cddd939b257f8d'],
+    ]
+
+    test_list = [
+        ['test', 'f0ef6b0ae62326f3e7ffdfab6717acfc'],
+    ]
+
+    def __init__(self, root, train=True, transform=None, download=False):
         """
-        Args:
-            data_path (string): path to csv file
-            img_path (string): path to the folder where images are
-            transform: pytorch transforms for transforms and tensor conversion
+            Args:
+            root (string): Root directory of dataset where directory
+                ``cifar-100-batches-py`` exists or will be saved to if download is set to True.
+            train (bool, optional): If True, creates dataset from training set, otherwise
+                creates from test set.
+            transform (callable, optional): A function/transform that  takes in an PIL image
+                and returns a transformed version. E.g, ``transforms.RandomCrop``
+            download (bool, optional): If true, downloads the dataset from the internet and
+                puts it in root directory. If dataset is already downloaded, it is not
+                downloaded again.
+
         """
-        # Transforms
         self.transform = transform
         self.to_tensor = transforms.ToTensor()
-        self.auxiliary = auxiliary
         self.train     = train
+        self.root = os.path.expanduser(root)
 
-        # Read the data file
+        # check download
+        if download:
+            self.download()
+
+        if not self._check_integrity():
+            raise RuntimeError('Dataset not found or corrupted.' +
+                               ' You can use download=True to download it')
+
+        # R\read the data file
         if train:
-            self.data_path = data_path + '/cifar-100-python/train'
+            self.data_path = root + '/cifar-100-python/train'
         else:
-            self.data_path = data_path + '/cifar-100-python/test'
+            self.data_path = root + '/cifar-100-python/test'
         with open(self.data_path, 'rb') as fo:
             self.data_info = pickle.load(fo, encoding='latin1')
         fo.close()
 
-        # Calculate len
+        # calculate data length
         self.data_len = len(self.data_info['data'])
 
-        # First column contains the image paths
+        # first column contains the image paths
         self.image_arr = self.data_info['data'].reshape([self.data_len, 3, 32, 32])
         self.image_arr = self.image_arr.transpose((0, 2, 3, 1))  # convert to HWC
 
@@ -46,63 +73,60 @@ class CIFAR100(Dataset):
         # 3 Class, build dict from 10 class:
         class_3 = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 1, 6: 2, 7: 2, 8: 2, 9: 2}
 
-        # Second column is the labels
+        # second column is the labels
         self.label_fine   = self.data_info['fine_labels']
         self.label_coarse = self.data_info['coarse_labels']
         self.label_c10    = np.vectorize(class_10.get)(self.label_coarse)
         self.label_c3     = np.vectorize(class_3.get)(self.label_c10)
 
-        if train:
-            np.save(data_path + '/cifar100_gt.npy', [self.label_c3, self.label_c10, self.label_coarse, self.label_fine])
+    def _check_integrity(self):
+        root = self.root
+        for fentry in (self.train_list + self.test_list):
+            filename, md5 = fentry[0], fentry[1]
+            fpath = os.path.join(root, self.base_folder, filename)
+            if not check_integrity(fpath, md5):
+                return False
+        return True
 
-            if auxiliary is not None and not os.path.isfile(data_path + '/cifar100_aux_{:d}.npy'.format(file_index)):
-                self.data_aux = np.zeros(len(self.label_fine))
-                label_all = np.load(data_path + '/cifar100_gt.npy')
-                # fine the correct auxiliary class
-                for aux_index in range(4):
-                    if label_all[aux_index, :].max() == (len(auxiliary) - 1):
-                        self.aux_index = aux_index
-                        break
-                    if aux_index is not 3:
-                        continue
-                    else:
-                        warnings.warn("Please define the correct hierarchy to be in: 3, 10, 20, 100.")
+    def download(self):
+        import tarfile
 
-                # randomly assign a class from predefined hierarchy
-                for label in range(len(self.auxiliary)):
-                    index = [i for i, x in enumerate(label_all[self.aux_index, :]) if x == label]
-                    random_class = np.random.randint(auxiliary[label], size=len(index)) + np.sum(auxiliary[:label])
-                    self.data_aux[index] = random_class
-                np.save(data_path + '/cifar100_aux_{:d}.npy'.format(file_index), self.data_aux)
+        if self._check_integrity():
+            print('Files already downloaded and verified')
+            return
 
-            if os.path.isfile(data_path + '/cifar100_aux_{:d}.npy'.format(file_index)):
-                self.data_aux = np.load(data_path + '/cifar100_aux_{:d}.npy'.format(file_index))
-                self.aux_index = 2
+        root = self.root
+        download_url(self.url, root, self.filename, self.tgz_md5)
+
+        # extract file
+        cwd = os.getcwd()
+        tar = tarfile.open(os.path.join(root, self.filename), "r:gz")
+        os.chdir(root)
+        tar.extractall()
+        tar.close()
+        os.chdir(cwd)
 
     def __getitem__(self, index):
-        # Get image name from the pandas df
+        # get image name from the pandas df
         single_image_name = self.image_arr[index]
 
-        # Open image
+        # open image
         img_as_img = Image.fromarray(single_image_name)
 
-        # Transform image to tensor
+        # transform image to tensor
         if self.transform is not None:
             img_as_img = self.transform(img_as_img)
         else:
             img_as_img = self.to_tensor(img_as_img)
 
-        # Get label(class) of the image (from coarse to fine)
+        # get label(class) of the image (from coarse to fine)
         label = np.zeros(4)
         label[-1] = self.label_fine[index]
         label[-2] = self.label_coarse[index]
         label[-3] = self.label_c10[index]
         label[-4] = self.label_c3[index]
 
-        if self.auxiliary is None or not self.train:
-            return img_as_img, label
-        else:
-            return img_as_img, np.array([label[self.aux_index], self.data_aux[index]])
+        return img_as_img, label
 
     def __len__(self):
         return self.data_len
