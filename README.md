@@ -15,11 +15,11 @@ train_data, train_label[:, k] = cifar100_train_dataset.next()
 ```
 
 ## Training MAXL
-The source code provided gives an example of training primary task of 20 classes `train_label[:, 2]` and auxiliary task of 100 classes `train_label[:, 3]` with hierarchical structure `\psi[i]=5`. You may revise the code easily to evaluate other hierarchies and play with other datasets found in `torchvision.datasets`.
+The source code provided gives an example of training primary task of 20 classes `train_label[:, 2]` and auxiliary task of 100 classes `train_label[:, 3]` with hierarchical structure `\psi[i]=5`. To run the code, please create a folder `dataset` to download CIFAR-100 dataset in this directory or you may redefine the dataset root path as your wish. It is straightforward to revise the code evaluating other hierarchies and play with other datasets found in `torchvision.datasets`.
 
 Note that: make sure `len(psi)` be the number of primary classes, and `sum(psi)` be the number of total auxiliary classes, e.g. `psi = [2,3,4]` representing total 3 primary classes and total 9 auxiliary classes by splitting each corresponding primary class into 2, 3, and 4 different auxiliary classes.
 
-Training MAXL from scratch typically requires 30 hours in GTX 1080, and training the baselines methods `Single` and `Human` requires 4 hours from scratch.
+Training MAXL from scratch typically requires 30 hours in GTX 1080, and training the baselines methods `Single` and `Human` requires 2-4 hours from scratch.
 
 ## Citation
 If you found this code/work to be useful in your own research, please considering citing the following:
