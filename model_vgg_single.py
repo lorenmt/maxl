@@ -137,6 +137,7 @@ for index in range(total_epoch):
     scheduler.step()
 
     # evaluate training data
+    VGG16.train()
     cifar100_train_dataset = iter(cifar100_train_loader)
     for i in range(train_batch):
         train_data, train_label = cifar100_train_dataset.next()
@@ -165,6 +166,7 @@ for index in range(total_epoch):
         avg_cost[index][0:2] += cost / train_batch
 
     # evaluating test data
+    VGG16.eval()
     with torch.no_grad():
         cifar100_test_dataset = iter(cifar100_test_loader)
         for i in range(test_batch):

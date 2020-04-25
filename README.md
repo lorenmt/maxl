@@ -25,11 +25,12 @@ Training MAXL from scratch typically requires 30 hours in GTX 1080, and training
 If you found this code/work to be useful in your own research, please considering citing the following:
 
 ```
-@article{liu2019maxl,
-  title={Self-Supervised Generalisation with Meta Auxiliary Learning},
-  author={Liu, Shikun and Davison, Andrew J and Johns, Edward},
-  journal={arXiv preprint arXiv:1901.08933},
-  year={2019}
+@inproceedings{maxl,
+title = {Self-Supervised Generalisation with Meta Auxiliary Learning},
+author = {Liu, Shikun and Davison, Andrew and Johns, Edward},
+booktitle={Advances in Neural Information Processing Systems},
+pages = {1677--1687},
+year = {2019},
 }
 ```
 
