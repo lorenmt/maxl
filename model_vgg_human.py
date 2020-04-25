@@ -5,6 +5,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import torch.optim as optim
 import torch.nn.functional as F
+import numpy as np
 
 
 class VGG16(nn.Module):

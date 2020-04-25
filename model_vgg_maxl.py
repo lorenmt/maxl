@@ -1,6 +1,8 @@
 from collections import OrderedDict
 from create_dataset import *
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
