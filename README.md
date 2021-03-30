@@ -1,4 +1,4 @@
-# Meta Auxiliary Learning
+# MAXL - Meta Auxiliary Learning
 This repository contains the source code to support the paper: [Self-Supervised Generalisation with Meta Auxiliary Learning](https://arxiv.org/abs/1901.08933), introduced by [Shikun Liu](http://shikun.io/), [Andrew J. Davison](http://www.doc.ic.ac.uk/~ajd/) and [Edward Johns](https://www.robot-learning.uk/).
 
 ## Requirements
