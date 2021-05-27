@@ -141,7 +141,6 @@ k = 0
 avg_cost = np.zeros([total_epoch, 8], dtype=np.float32)
 for index in range(total_epoch):
     cost = np.zeros(4, dtype=np.float32)
-    scheduler.step()
 
     # evaluate training data
     VGG16.train()
@@ -205,6 +204,7 @@ for index in range(total_epoch):
             cost[3] = test_acc2
             avg_cost[index][4:] += cost / test_batch
 
+    scheduler.step()
     print('EPOCH: {:04d} ITER: {:04d} | TRAIN [LOSS|ACC.]: PRI {:.4f} {:.4f} AUX {:.4f} {:.4f} || '
           'TEST [LOSS|ACC.]: PRI {:.4f} {:.4f} AUX {:.4f} {:.4f}'
           .format(index, k, avg_cost[index][0], avg_cost[index][1], avg_cost[index][2], avg_cost[index][3],

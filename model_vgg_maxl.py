@@ -315,9 +315,6 @@ for index in range(total_epoch):
     if (index + 1) % 50 == 0:
        vgg_lr = vgg_lr * 0.5
 
-    scheduler.step()
-    gen_scheduler.step()
-
     # evaluate training data (training-step, update on theta_1)
     VGG16_model.train()
     cifar100_train_dataset = iter(cifar100_train_loader)
@@ -342,7 +339,9 @@ for index in range(total_epoch):
         grads2 = torch.autograd.grad(torch.mean(train_loss2), VGG16_model.parameters(), retain_graph=True, allow_unused=True)
         cos_mean = 0
         for k in range(len(grads1) - 8):  # only compute on shared representation (ignore task-specific fc-layers)
-            cos_mean += torch.mean(F.cosine_similarity(grads1[k], grads2[k], dim=0)) / (len(grads1) - 8)
+            grads1_ = grads1[k].view(grads1[k].shape[0], -1)
+            grads2_ = grads2[k].view(grads2[k].shape[0], -1)
+            cos_mean += torch.mean(F.cosine_similarity(grads1_, grads2_, dim=-1)) / (len(grads1) - 8)
         # cosine similarity evaluation ends here
 
         train_loss = torch.mean(train_loss1) + torch.mean(train_loss2)
@@ -432,6 +431,8 @@ for index in range(total_epoch):
 
             avg_cost[index][7:] += cost[0:2] / test_batch
 
+    scheduler.step()
+    gen_scheduler.step()
     print('EPOCH: {:04d} Iter {:04d} | TRAIN [LOSS|ACC.]: PRI {:.4f} {:.4f} COSSIM {:.4f} || '
           'META [LOSS|ACC.]: PRE {:.4f} {:.4f} AFTER {:.4f} {:.4f} || TEST: {:.4f} {:.4f}'
           .format(index, k, avg_cost[index][0], avg_cost[index][1], avg_cost[index][2], avg_cost[index][3],
