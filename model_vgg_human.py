@@ -149,6 +149,7 @@ for index in range(total_epoch):
         train_data, train_label = cifar100_train_dataset.next()
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
+
         train_pred1, train_pred2 = VGG16(train_data)
 
         # reset optimizer with zero gradient
@@ -186,6 +187,7 @@ for index in range(total_epoch):
             test_data, test_label = cifar100_test_dataset.next()
             test_label = test_label.type(torch.LongTensor)
             test_data, test_label = test_data.to(device), test_label.to(device)
+
             test_pred1, test_pred2 = VGG16(test_data)
             test_loss1  = VGG16.model_fit(test_pred1, test_label[:,2], 20)
             test_loss2  = VGG16.model_fit(test_pred2, test_label[:,3], 100)

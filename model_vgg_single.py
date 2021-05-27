@@ -142,6 +142,7 @@ for index in range(total_epoch):
         train_data, train_label = cifar100_train_dataset.next()
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
+
         train_pred1 = VGG16(train_data)
 
         # reset optimizer with zero gradient

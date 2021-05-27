@@ -2,6 +2,7 @@ from collections import OrderedDict
 from create_dataset import *
 
 import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
@@ -11,6 +12,9 @@ import torch.nn.functional as F
 import torch.utils.data.sampler as sampler
 
 
+# --------------------------------------------------------------------------------
+# Define network
+# --------------------------------------------------------------------------------
 class LabelGenerator(nn.Module):
     def __init__(self, psi):
         super(LabelGenerator, self).__init__()
@@ -167,72 +171,15 @@ class VGG16(nn.Module):
             )
         return conv_block
 
-    # define forward conv-layer (will be used in second-derivative step)
-    def conv_layer_ff(self, input, weights, index):
-        if index < 3:
-            net = F.conv2d(input, weights['block{:d}.0.weight'.format(index)], weights['block{:d}.0.bias'.format(index)], padding=1)
-            net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)],
-                               training=True)
-            net = F.relu(net, inplace=True)
-            net = F.conv2d(net, weights['block{:d}.3.weight'.format(index)], weights['block{:d}.3.bias'.format(index)], padding=1)
-            net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)],
-                               training=True)
-            net = F.relu(net, inplace=True)
-            net = F.max_pool2d(net, kernel_size=2, stride=2, )
-        else:
-            net = F.conv2d(input, weights['block{:d}.0.weight'.format(index)], weights['block{:d}.0.bias'.format(index)], padding=1)
-            net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.1.weight'.format(index)], weights['block{:d}.1.bias'.format(index)],
-                               training=True)
-            net = F.relu(net, inplace=True)
-            net = F.conv2d(net, weights['block{:d}.3.weight'.format(index)], weights['block{:d}.3.bias'.format(index)], padding=1)
-            net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.4.weight'.format(index)], weights['block{:d}.4.bias'.format(index)],
-                               training=True)
-            net = F.relu(net, inplace=True)
-            net = F.conv2d(net, weights['block{:d}.6.weight'.format(index)], weights['block{:d}.6.bias'.format(index)], padding=1)
-            net = F.batch_norm(net, torch.zeros(net.data.size()[1]).to(device), torch.ones(net.data.size()[1]).to(device),
-                               weights['block{:d}.7.weight'.format(index)], weights['block{:d}.7.bias'.format(index)],
-                               training=True)
-            net = F.relu(net, inplace=True)
-            net = F.max_pool2d(net, kernel_size=2, stride=2)
-        return net
+    def forward(self, x):
+        g_block1 = self.block1(x)
+        g_block2 = self.block2(g_block1)
+        g_block3 = self.block3(g_block2)
+        g_block4 = self.block4(g_block3)
+        g_block5 = self.block5(g_block4)
 
-    # define forward fc-layer (will be used in second-derivative step)
-    def dense_layer_ff(self, input, weights, index):
-        net = F.linear(input, weights['classifier{:d}.0.weight'.format(index)], weights['classifier{:d}.0.bias'.format(index)])
-        net = F.relu(net, inplace=True)
-        net = F.linear(net, weights['classifier{:d}.2.weight'.format(index)], weights['classifier{:d}.2.bias'.format(index)])
-        net = F.softmax(net, dim=1)
-        return net
-
-    def forward(self, x, weights=None):
-        """
-            if no weights given, use the direct training strategy and update network paramters
-            else retain the computational graph which will be used in second-derivative step
-        """
-        if weights is None:
-            g_block1 = self.block1(x)
-            g_block2 = self.block2(g_block1)
-            g_block3 = self.block3(g_block2)
-            g_block4 = self.block4(g_block3)
-            g_block5 = self.block5(g_block4)
-
-            t1_pred = self.classifier1(g_block5.view(g_block5.size(0), -1))
-            t2_pred = self.classifier2(g_block5.view(g_block5.size(0), -1))
-
-        else:
-            g_block1 = self.conv_layer_ff(x, weights, 1)
-            g_block2 = self.conv_layer_ff(g_block1, weights, 2)
-            g_block3 = self.conv_layer_ff(g_block2, weights, 3)
-            g_block4 = self.conv_layer_ff(g_block3, weights, 4)
-            g_block5 = self.conv_layer_ff(g_block4, weights, 5)
-
-            t1_pred = self.dense_layer_ff(g_block5.view(g_block5.size(0), -1), weights, 1)
-            t2_pred = self.dense_layer_ff(g_block5.view(g_block5.size(0), -1), weights, 2)
-
+        t1_pred = self.classifier1(g_block5.view(g_block5.size(0), -1))
+        t2_pred = self.classifier2(g_block5.view(g_block5.size(0), -1))
         return t1_pred, t2_pred
 
     def model_fit(self, x_pred, x_output, pri=True, num_output=3):
@@ -253,6 +200,104 @@ class VGG16(nn.Module):
         x_pred1 = torch.mean(x_pred1, dim=0)
         loss1 = x_pred1 * torch.log(x_pred1 + 1e-20)
         return torch.sum(loss1)
+
+
+# --------------------------------------------------------------------------------
+# Define MAXL framework with first order approximation
+# --------------------------------------------------------------------------------
+class MetaAuxiliaryLearning:
+    def __init__(self, multi_task_net, label_generator):
+        self.multi_task_net = multi_task_net
+        self.multi_task_net_ = copy.deepcopy(multi_task_net)
+        self.label_generator = label_generator
+
+    def unrolled_backward(self, train_x, train_y, alpha, model_optim):
+        """
+        Compute un-rolled loss and backward its gradients
+        """
+
+        #  compute unrolled multi-task network theta_1^+ (virtual step)
+        train_pred1, train_pred2 = self.multi_task_net(train_x)
+        train_pred3 = self.label_generator(train_x, train_y)
+
+        train_loss1 = self.multi_task_net.model_fit(train_pred1, train_y, pri=True, num_output=20)
+        train_loss2 = self.multi_task_net.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
+        train_loss3 = self.multi_task_net.model_entropy(train_pred3)
+
+        loss = torch.mean(train_loss1) + torch.mean(train_loss2)
+
+        # compute gradient
+        gradients = torch.autograd.grad(loss, self.multi_task_net.parameters())
+
+        # do virtual step: theta_1^+ = theta_1 - alpha * (primary loss + auxiliary loss)
+        with torch.no_grad():
+            for weight, weight_, grad in zip(self.multi_task_net.parameters(), self.multi_task_net_.parameters(),
+                                             gradients):
+                if 'momentum' in model_optim.param_groups[0].keys():  # used in SGD with momentum
+                    if model_optim.param_groups[0]['momentum'] == 0:
+                        m = 0
+                    else:
+                        m = model_optim.state[weight].get('momentum_buffer', 0.) * model_optim.param_groups[0]['momentum']
+                else:
+                    m = 0
+                weight_.copy_(weight - alpha * (m + grad + model_optim.param_groups[0]['weight_decay'] * weight))
+
+        # meta-training step: updating theta_2
+        train_pred1, train_pred2 = self.multi_task_net_(train_x)
+        train_loss1 = self.multi_task_net.model_fit(train_pred1, train_y, pri=True, num_output=20)
+        train_loss2 = F.mse_loss(train_pred2, torch.zeros_like(train_pred2, device=train_x.device))  # dummy loss function
+
+        # multi-task loss (set 0 weighting for train_loss 2;
+        # so that to make sure the gradient of auxiliary prediction head is not None)
+        loss = torch.mean(train_loss1) + 0 * torch.mean(train_loss2) + 0.2 * torch.mean(train_loss3)
+
+        # compute hessian (finite difference approximation)
+        model_weights_ = tuple(self.multi_task_net_.parameters())
+        d_model = torch.autograd.grad(loss, model_weights_)
+        hessian = self.compute_hessian(d_model, train_x, train_y)
+
+        # update final gradient = - alpha * hessian
+        with torch.no_grad():
+            for mw, h in zip(self.label_generator.parameters(), hessian):
+                mw.grad = - alpha * h
+
+    def compute_hessian(self, d_model, train_x, train_y):
+        norm = torch.cat([w.view(-1) for w in d_model]).norm()
+        eps = 0.01 / norm
+
+        # theta_1^l = theta_1 + eps * d_model
+        with torch.no_grad():
+            for p, d in zip(self.multi_task_net.parameters(), d_model):
+                p += eps * d
+
+        train_pred1, train_pred2 = self.multi_task_net(train_x)
+        train_pred3 = self.label_generator(train_x, train_y)
+
+        train_loss1 = self.multi_task_net.model_fit(train_pred1, train_y, pri=True, num_output=20)
+        train_loss2 = self.multi_task_net.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
+        loss = torch.mean(train_loss1) + torch.mean(train_loss2)
+        d_weight_p = torch.autograd.grad(loss, self.label_generator.parameters())
+
+        # theta_1^r = theta_1 - eps * d_model
+        with torch.no_grad():
+            for p, d in zip(self.multi_task_net.parameters(), d_model):
+                p -= 2 * eps * d
+
+        train_pred1, train_pred2 = self.multi_task_net(train_x)
+        train_pred3 = self.label_generator(train_x, train_y)
+
+        train_loss1 = self.multi_task_net.model_fit(train_pred1, train_y, pri=True, num_output=20)
+        train_loss2 = self.multi_task_net.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
+        loss = torch.mean(train_loss1) + torch.mean(train_loss2)
+        d_weight_n = torch.autograd.grad(loss, self.label_generator.parameters())
+
+        # recover theta
+        with torch.no_grad():
+            for p, d in zip(self.multi_task_net.parameters(), d_model):
+                p += eps * d
+
+        hessian = [(p - n) / (2. * eps) for p, n in zip(d_weight_p, d_weight_n)]
+        return hessian
 
 
 # load CIFAR100 dataset
@@ -303,17 +348,14 @@ test_batch = len(cifar100_test_loader)
 VGG16_model = VGG16(psi=psi).to(device)
 optimizer = optim.SGD(VGG16_model.parameters(), lr=0.01)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
-avg_cost = np.zeros([total_epoch, 9], dtype=np.float32)
-vgg_lr = 0.01  # define learning rate for second-derivative step (theta_1^+)
+
+# define MAXL framework
+maxl = MetaAuxiliaryLearning(multi_task_net=VGG16_model, label_generator=LabelGenerator)
+
+avg_cost = np.zeros([total_epoch, 5], dtype=np.float32)
 k = 0
 for index in range(total_epoch):
     cost = np.zeros(4, dtype=np.float32)
-
-    # drop the learning rate with the same strategy in the multi-task network
-    # note: not necessary to be consistent with the multi-task network's parameter,
-    # it can also be learned directly from the network
-    if (index + 1) % 50 == 0:
-       vgg_lr = vgg_lr * 0.5
 
     # evaluate training data (training-step, update on theta_1)
     VGG16_model.train()
@@ -322,6 +364,7 @@ for index in range(total_epoch):
         train_data, train_label = cifar100_train_dataset.next()
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
+
         train_pred1, train_pred2 = VGG16_model(train_data)
         train_pred3 = LabelGenerator(train_data, train_label[:, 2])  # generate auxiliary labels
 
@@ -364,52 +407,12 @@ for index in range(total_epoch):
         train_label = train_label.type(torch.LongTensor)
         train_data, train_label = train_data.to(device), train_label.to(device)
 
-        train_pred1, train_pred2 = VGG16_model(train_data)
-        train_pred3 = LabelGenerator(train_data, train_label[:, 2])
-
         # reset optimizer with zero gradient
         optimizer.zero_grad()
         gen_optimizer.zero_grad()
 
-        # choose level 2/3 hierarchy, 20-class/100-class classification
-        train_loss1 = VGG16_model.model_fit(train_pred1, train_label[:, 2], pri=True, num_output=20)
-        train_loss2 = VGG16_model.model_fit(train_pred2, train_pred3, pri=False, num_output=100)
-        train_loss3 = VGG16_model.model_entropy(train_pred3)
-
-        # multi-task loss
-        train_loss = torch.mean(train_loss1) + torch.mean(train_loss2)
-
-        # current accuracy on primary task
-        train_predict_label1 = train_pred1.data.max(1)[1]
-        train_acc1 = train_predict_label1.eq(train_label[:, 2]).sum().item() / batch_size
-        cost[0] = torch.mean(train_loss1).item()
-        cost[1] = train_acc1
-
-        # current theta_1
-        fast_weights = OrderedDict((name, param) for (name, param) in VGG16_model.named_parameters())
-
-        # create_graph flag for computing second-derivative
-        grads = torch.autograd.grad(train_loss, VGG16_model.parameters(), create_graph=True)
-        data = [p.data for p in list(VGG16_model.parameters())]
-
-        # compute theta_1^+ by applying sgd on multi-task loss
-        fast_weights = OrderedDict((name, param - vgg_lr * grad) for ((name, param), grad, data) in zip(fast_weights.items(), grads, data))
-
-        # compute primary loss with the updated thetat_1^+
-        train_pred1, train_pred2 = VGG16_model.forward(train_data, fast_weights)
-        train_loss1 = VGG16_model.model_fit(train_pred1, train_label[:, 2], pri=True, num_output=20)
-
-        # update theta_2 with primary loss + entropy loss
-        (torch.mean(train_loss1) + 0.2 * torch.mean(train_loss3)).backward()
+        maxl.unrolled_backward(train_data, train_label[:, 2], scheduler.get_last_lr()[0], optimizer)
         gen_optimizer.step()
-
-        train_predict_label1 = train_pred1.data.max(1)[1]
-        train_acc1 = train_predict_label1.eq(train_label[:, 2]).sum().item() / batch_size
-
-        # accuracy on primary task after one update
-        cost[2] = torch.mean(train_loss1).item()
-        cost[3] = train_acc1
-        avg_cost[index][3:7] += cost[0:4] / train_batch
 
     # evaluate on test data
     VGG16_model.eval()
@@ -419,8 +422,8 @@ for index in range(total_epoch):
             test_data, test_label = cifar100_test_dataset.next()
             test_label = test_label.type(torch.LongTensor)
             test_data, test_label = test_data.to(device), test_label.to(device)
-            test_pred1, test_pred2 = VGG16_model(test_data)
 
+            test_pred1, test_pred2 = VGG16_model(test_data)
             test_loss1 = VGG16_model.model_fit(test_pred1, test_label[:, 2], pri=True, num_output=20)
 
             test_predict_label1 = test_pred1.data.max(1)[1]
@@ -429,11 +432,10 @@ for index in range(total_epoch):
             cost[0] = torch.mean(test_loss1).item()
             cost[1] = test_acc1
 
-            avg_cost[index][7:] += cost[0:2] / test_batch
+            avg_cost[index][3:] += cost[0:2] / test_batch
 
     scheduler.step()
     gen_scheduler.step()
-    print('EPOCH: {:04d} Iter {:04d} | TRAIN [LOSS|ACC.]: PRI {:.4f} {:.4f} COSSIM {:.4f} || '
-          'META [LOSS|ACC.]: PRE {:.4f} {:.4f} AFTER {:.4f} {:.4f} || TEST: {:.4f} {:.4f}'
+    print('EPOCH: {:04d} Iter {:04d} | TRAIN [LOSS|ACC.]: PRI {:.4f} {:.4f} COSSIM {:.4f} || TEST: {:.4f} {:.4f}'
           .format(index, k, avg_cost[index][0], avg_cost[index][1], avg_cost[index][2], avg_cost[index][3],
-                  avg_cost[index][4], avg_cost[index][5], avg_cost[index][6], avg_cost[index][7], avg_cost[index][8]))
+                  avg_cost[index][4]))
