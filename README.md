@@ -1,6 +1,8 @@
 # MAXL - Meta Auxiliary Learning
 This repository contains the source code to support the paper: [Self-Supervised Generalisation with Meta Auxiliary Learning](https://arxiv.org/abs/1901.08933), introduced by [Shikun Liu](http://shikun.io/), [Andrew J. Davison](http://www.doc.ic.ac.uk/~ajd/) and [Edward Johns](https://www.robot-learning.uk/).
 
+See project page [here](https://shikun.io/projects/meta-auxiliary-learning).
+
 ## Update
 **Nov 2021**: We have implemented the first order approximation of MAXL framework, which would speed up 4 - 6 times training time compared to the original implementation. The first order approximation is based on the finite difference method, inspired by [DARTS](https://arxiv.org/abs/1806.09055). No more tedious forward functions for the inner loop optimisation now. Enjoy. :)
 
